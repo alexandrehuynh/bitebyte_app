@@ -24,7 +24,7 @@ async function run() {
   Also, calculate the total caloric content and overall macronutrient composition of the entire dish.
 `;
   const imageParts = [
-    fileToGenerativePart("assets/images/teriyaki_chicken.jpg", "image/png")
+    fileToGenerativePart("assets/images/mac_cheese.jpg", "image/png")
   ];
 
   try {
