@@ -32,32 +32,37 @@ app.post('/analyze-image', upload.single('image'), async (req, res) => {
       };
 
       const prompt = `
-      Analyze the provided image and output the nutritional information directly in a structured JSON format. Please ensure the response adheres strictly to the following JSON structure:
+      Analyze the provided image and output the nutritional information directly in a structured JSON format. 
+      The image is expected to contain food items commonly found in nutritional databases. 
+      Accurately identify the dish and each ingredient based on visual analysis, and provide a detailed breakdown of macronutrients. 
+      Please structure the response as follows:
   
       {
-        "dish": "Name of the dish",
+        "dish": "Name of the dish, clearly identified from the image",
         "ingredients": [
           {
-            "name": "Ingredient name",
-            "quantity": "Quantity if applicable, numbers only, no units",
-            "calories": "Numeric value of calories, no units",
+            "name": "Ingredient name, as commonly known",
+            "quantity": "Estimated quantity present in the dish, numbers only, no units",
+            "calories": "Total calories for the quantity present, numeric value only",
             "macronutrients": {
-              "fat": "Numeric value of fat in grams, no units",
-              "carbohydrates": "Numeric value of carbohydrates in grams, no units",
-              "protein": "Numeric value of protein in grams, no units"
+              "fat": "Total fat in grams for the quantity present, numeric value only",
+              "carbohydrates": "Total carbohydrates in grams for the quantity present, numeric value only",
+              "protein": "Total protein in grams for the quantity present, numeric value only"
             }
           }
         ],
         "totalNutrition": {
-          "calories": "Total numeric value of calories, no units",
-          "fat": "Total fat in grams, numeric, no units",
-          "carbohydrates": "Total carbohydrates in grams, numeric, no units",
-          "protein": "Total protein in grams, numeric, no units"
+          "calories": "Total calories of the complete dish, numeric value only",
+          "fat": "Sum of all fats in the dish in grams, numeric value only",
+          "carbohydrates": "Sum of all carbohydrates in the dish in grams, numeric value only",
+          "protein": "Sum of all proteins in the dish in grams, numeric value only"
         }
       }
   
-      Please include all nutritional details explicitly as per this structure and ensure all numeric values are provided without any units attached to facilitate straightforward JSON parsing.
+      Emphasize accuracy in the identification and quantification of ingredients. 
+      Ensure that the macronutrient breakdown adheres to typical values known for these ingredients in standard nutritional databases.
   `;
+  
   
       const result = await genAI.getGenerativeModel({ model: "gemini-pro-vision" }).generateContent([prompt, imageData]);
       const response = await result.response;
