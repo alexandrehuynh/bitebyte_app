@@ -66,31 +66,41 @@ app.post('/analyze-image', upload.single('image'), async (req, res) => {
   
       const result = await genAI.getGenerativeModel({ model: "gemini-pro-vision" }).generateContent([prompt, imageData]);
       const response = await result.response;
-      let rawText = response.text();  // This gets the JSON string from API
+      let rawText = await response.text();  // Await the Promise returned by text()
 
       // Debugging the raw text
       console.log("Raw API Response Text:", rawText);
 
       // Clean the text to remove Markdown code block syntax
-      cleanText = rawText.replace(/```json\n/g, '').replace(/```/g, '');
+      let cleanText = rawText.replace(/^```json|```$/g, '');
 
       // Debugging the clean text
-      console.log("Raw API Response Text:", cleanText); 
+      console.log("Clean API Response Text:", cleanText); 
 
-      const jsonData = JSON.parse(cleanText); // Parse the cleaned JSON string
+      // Parse the JSON only once
+      const jsonData = JSON.parse(cleanText);
       const structuredData = parseNutritionalData(jsonData);
-
-      res.json({
+      
+      return res.json({
           success: true,
           data: structuredData
-      });
-  } catch (error) {
-      console.error('Error:', error);
-      res.status(500).json({
+        });
+      } catch (error) {
+        console.error("Error:", error);
+        
+        // Check if cleanText is available before logging it
+        if (typeof cleanText !== 'undefined') {
+          console.log("Problematic JSON text:", cleanText);
+        }
+        
+        return res.status(500).json({
           success: false,
           error: 'Server error processing image'
-      });
+        });
   } finally {
-      if (req.file) fs.unlinkSync(req.file.path);
-  }
+    // Safely attempt to delete the file
+    if (req.file && fs.existsSync(req.file.path)) {
+      fs.unlinkSync(req.file.path);
+    }
+}
 });
