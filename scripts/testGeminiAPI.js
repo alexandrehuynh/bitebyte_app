@@ -1,10 +1,10 @@
 require('dotenv').config();
-const API_Key = process.env.API_Key;
+const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 
 const { GoogleGenerativeAI } = require("@google/generative-ai");
 const fs = require("fs");
 
-const genAI = new GoogleGenerativeAI(API_Key); // Use the API key directly
+const genAI = new GoogleGenerativeAI(GEMINI_API_KEY); // Use the API key directly
 
 function fileToGenerativePart(path, mimeType) {
   return {

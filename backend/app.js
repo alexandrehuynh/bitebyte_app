@@ -10,8 +10,8 @@ const parseNutritionalData = require('./services/parseNutritionalData');
 const app = express();
 const upload = multer({ dest: 'uploads/' });
 const PORT = process.env.PORT || 5000;
-const API_Key = process.env.API_Key;
-const genAI = new GoogleGenerativeAI(API_Key);
+const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
+const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
 
 function cleanJsonText(rawText) {
   // Removes Markdown code block syntax and trims any unwanted whitespace
@@ -57,7 +57,10 @@ app.post('/analyze-image', upload.single('image'), async (req, res) => {
       };
 
       const prompt = `
-      Analyze the provided image and output the nutritional information directly in a structured JSON format. 
+      Analyze the provided image and accurately identify each food item. 
+      Output the nutritional information directly in a structured JSON format, adhering closely to standard nutritional databases. 
+      Convert all fractions to decimals for consistency and ensure that the macronutrient breakdown aligns with verified data sources. 
+      Focus on realistic serving sizes and avoid exaggerating quantities or nutritional values.
       The image is expected to contain food items commonly found in nutritional databases. 
       Accurately identify the dish and each ingredient based on visual analysis. 
       Provide all quantities in decimal numerical format without any unit descriptions (e.g., '1', '0.5', not '1/2 cup', '2 slices') 
@@ -89,7 +92,6 @@ app.post('/analyze-image', upload.single('image'), async (req, res) => {
       Emphasize accuracy in the identification and quantification of ingredients. 
       Ensure that the macronutrient breakdown adheres to typical values known for these ingredients in standard nutritional databases.
   `;
-  
   
       const result = await genAI.getGenerativeModel({ model: "gemini-pro-vision" }).generateContent([prompt, imageData]);
       const response = await result.response;
