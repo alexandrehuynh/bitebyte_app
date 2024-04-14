@@ -13,6 +13,31 @@ const PORT = process.env.PORT || 5000;
 const API_Key = process.env.API_Key;
 const genAI = new GoogleGenerativeAI(API_Key);
 
+function cleanJsonText(rawText) {
+  // Removes Markdown code block syntax and trims any unwanted whitespace
+  return rawText.replace(/^[^{\[]+|[^}\]]+$/g, '').trim(); // Removes anything before the first { or [ and after the last } or ]
+}
+
+function isValidJson(jsonString) {
+  try {
+      const data = JSON.parse(jsonString);
+      if (!data.dish || !Array.isArray(data.ingredients) || !data.totalNutrition) {
+          throw new Error("JSON structure does not meet expected format.");
+      }
+      data.ingredients.forEach(ingredient => {
+          if (typeof ingredient.quantity !== "number") {  // Checking for numeric quantity
+              console.error(`Invalid quantity format for ingredient:`, ingredient);
+              throw new Error("Quantity must be numeric.");
+          }
+      });
+      return true;
+  } catch (e) {
+      console.error("Invalid JSON:", e);
+      return false;
+  }
+}
+
+// app. functions
 app.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`);
 });
@@ -34,15 +59,17 @@ app.post('/analyze-image', upload.single('image'), async (req, res) => {
       const prompt = `
       Analyze the provided image and output the nutritional information directly in a structured JSON format. 
       The image is expected to contain food items commonly found in nutritional databases. 
-      Accurately identify the dish and each ingredient based on visual analysis, and provide a detailed breakdown of macronutrients. 
-      Please structure the response as follows:
-  
+      Accurately identify the dish and each ingredient based on visual analysis. 
+      Provide all quantities in decimal numerical format without any unit descriptions (e.g., '1', '0.5', not '1/2 cup', '2 slices') 
+      and convert any fractions to decimal format to ensure consistency and precision in measurements.
+      Provide a detailed breakdown of macronutrients. Structure the response as follows:      
+      
       {
         "dish": "Name of the dish, clearly identified from the image",
         "ingredients": [
           {
             "name": "Ingredient name, as commonly known",
-            "quantity": "Estimated quantity present in the dish, numbers only, no units",
+            "quantity": "Exact numerical quantity present in the dish, expressed in decimal format, without any unit description",
             "calories": "Total calories for the quantity present, numeric value only",
             "macronutrients": {
               "fat": "Total fat in grams for the quantity present, numeric value only",
@@ -68,16 +95,18 @@ app.post('/analyze-image', upload.single('image'), async (req, res) => {
       const response = await result.response;
       let rawText = await response.text();  // Await the Promise returned by text()
 
-      // Debugging the raw text
       console.log("Raw API Response Text:", rawText);
+      let cleanText = cleanJsonText(rawText);
+      console.log("Clean API Response Text:", cleanText);
 
-      // Clean the text to remove Markdown code block syntax
-      let cleanText = rawText.replace(/^```json|```$/g, '');
+      if (!isValidJson(cleanText)) {
+        console.error("JSON validation failed.");
+        return res.status(400).json({
+            success: false,
+            error: 'JSON does not meet the required structure or format'
+        });
+    }
 
-      // Debugging the clean text
-      console.log("Clean API Response Text:", cleanText); 
-
-      // Parse the JSON only once
       const jsonData = JSON.parse(cleanText);
       const structuredData = parseNutritionalData(jsonData);
       
