@@ -1,4 +1,5 @@
 require('dotenv').config();
+const axios = require('axios');
 const express = require('express');
 const multer = require('multer');
 const fs = require('fs');
@@ -37,9 +38,9 @@ function isValidJson(jsonString) {
           throw new Error("JSON structure does not meet expected format.");
       }
       data.ingredients.forEach(ingredient => {
-          if (typeof ingredient.weight !== "number") {  // Checking for numeric weight
-              console.error(`Invalid weight format for ingredient:`, ingredient);
-              throw new Error("Weight must be numeric.");
+          if (typeof ingredient.quantity !== "number") {  // Checking for numeric weight
+              console.error(`Invalid quantity format for ingredient:`, ingredient);
+              throw new Error("Quantity must be numeric.");
           }
       });
       return true;
@@ -48,6 +49,32 @@ function isValidJson(jsonString) {
       return false;
   }
 }
+
+function formatIngredientsForEdamam(ingredients) {
+  return ingredients.map(ing => `${ing.quantity} ${ing.unit} ${ing.name}`).join(', ');
+}
+
+// Function to send ingredients to Edamam API
+async function sendIngredientsToEdamam(ingredientString) {
+  const app_id = process.env.EDAMAM_NUTRITION_APP_ID;
+  const app_key = process.env.EDAMAM_NUTRITION_APP_KEY;
+
+  try {
+    const response = await axios.get('https://api.edamam.com/api/nutrition-data', {
+      params: {
+        app_id: app_id,
+        app_key: app_key,
+        ingr: ingredientString
+      }
+    });
+
+    return response.data;
+  } catch (error) {
+    console.error('Error sending data to Edamam:', error);
+    throw error; // Rethrow to handle it in the calling context
+  }
+}
+
 
 // app. functions
 app.listen(PORT, () => {
@@ -88,7 +115,8 @@ app.post('/analyze-image', upload.single('image'), async (req, res) => {
         "ingredients": [
           {
             "name": "Commonly known ingredient name",
-            "weight": "Exact weight of the ingredient in the dish in grams, expressed as a decimal",
+            "quantity": "Exact quantity of the ingredient in the dish",
+            "unit": "Unit of measurement (e.g., grams, cups)",
             "calories": "Total calories for the specified weight, numeric value only",
             "macronutrients": {
               "fat": "Total fat in grams for the specified weight, numeric value only",
@@ -125,50 +153,27 @@ app.post('/analyze-image', upload.single('image'), async (req, res) => {
         });
     }
 
-      const jsonData = JSON.parse(cleanText);
-      const structuredData = parseNutritionalData(jsonData);
+    const jsonData = JSON.parse(cleanText);
+    const structuredData = parseNutritionalData(jsonData);
 
-      // // Initialize an object to store the enhanced data
-      // let enhancedData = {
-      //   ...structuredData,
-      //   enhancedIngredients: []
-      // };
+    // Save to Firebase
+    const newDataKey = database.ref('dishes').push().key;
+    await database.ref('dishes/' + newDataKey).set(structuredData);
 
-      // // Loop through each ingredient from the Gemini data
-      // for (const ingredient of structuredData.ingredients) {
-      // try {
-      //   // Cross-reference with Edamam's Food Database API
-      //   const foodInfo = await getFoodDatabaseInfo(ingredient.name);
-      //   // Retrieve nutritional data using Edamam's Nutrition Analysis API
-      //   const nutritionalData = await getNutritionalAnalysis(foodInfo.foodId);
+    // Prepare the data for Edamam API
+    const ingredientString = formatIngredientsForEdamam(jsonData.ingredients); 
+    
+    // Send the data to Edamam API
+    const edamamResponse = await sendIngredientsToEdamam(ingredientString);
 
-      //   // Add the enhanced data to the enhancedData object
-      //   enhancedData.enhancedIngredients.push({
-      //     ...ingredient,
-      //     foodInfo: foodInfo, // Details from the Food Database API
-      //     nutritionalData: nutritionalData // Nutritional details from the Nutrition Analysis API
-      //   });
-      // } catch (error) {
-      //   console.error(`Error processing ingredient ${ingredient.name}:`, error);
-      //   // Handle the error appropriately
-      // }
-      // }
+    // Return the success response with Firebase key and Edamam data
+    return res.json({
+      success: true,
+      firebaseKey: newDataKey,
+      data: structuredData,
+      edamamData: edamamResponse
+    });
 
-      // Save to Firebase
-      const newDataKey = database.ref('dishes').push().key;
-      database.ref('dishes/' + newDataKey).set(structuredData, function(error) {
-          if (error) {
-              console.error("Firebase data could not be saved." + error);
-              return res.status(500).json({ success: false, error: 'Firebase data could not be saved.' });
-          } else {
-              console.log("Firebase data saved successfully.");
-              res.json({
-                  success: true,
-                  firebaseKey: newDataKey,
-                  data: structuredData
-              });
-          }
-      });;
   } catch (error) {
     console.error("Error:", error);
 

@@ -5,6 +5,7 @@ function parseNutritionalData(jsonData) {
         ingredients: jsonData.ingredients.map(ingredient => ({
             name: ingredient.name,
             quantity: ingredient.quantity || 'unknown quantity',
+            unit: ingredient.unit || 'unknown unit', 
             calories: ingredient.calories,
             macronutrients: {
                 fat: ingredient.macronutrients.fat,
