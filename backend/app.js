@@ -3,9 +3,21 @@ const express = require('express');
 const multer = require('multer');
 const fs = require('fs');
 const { GoogleGenerativeAI } = require("@google/generative-ai");
+const admin = require('firebase-admin');
 
-// Import the parseNutritionalData function from its module
+// Import Firebase configuration from your module
+const serviceAccount = require('../serviceAccountKey.json'); 
+
+// Initialize Firebase Admin SDK
+admin.initializeApp({
+  credential: admin.credential.cert(serviceAccount),
+  databaseURL: "https://bitebyte-app-default-rtdb.firebaseio.com" 
+});
+
+const database = admin.database(); // Get a reference to the database service
+
 const parseNutritionalData = require('./services/parseNutritionalData');
+const { getFoodDatabaseInfo, getNutritionalAnalysis } = require('../src/api/edamam');
 
 const app = express();
 const upload = multer({ dest: 'uploads/' });
@@ -25,9 +37,9 @@ function isValidJson(jsonString) {
           throw new Error("JSON structure does not meet expected format.");
       }
       data.ingredients.forEach(ingredient => {
-          if (typeof ingredient.quantity !== "number") {  // Checking for numeric quantity
-              console.error(`Invalid quantity format for ingredient:`, ingredient);
-              throw new Error("Quantity must be numeric.");
+          if (typeof ingredient.weight !== "number") {  // Checking for numeric weight
+              console.error(`Invalid weight format for ingredient:`, ingredient);
+              throw new Error("Weight must be numeric.");
           }
       });
       return true;
@@ -39,12 +51,15 @@ function isValidJson(jsonString) {
 
 // app. functions
 app.listen(PORT, () => {
-    console.log(`Server running on port ${PORT}`);
+  console.log(`Server running on port ${PORT}`);
 });
 
 app.post('/analyze-image', upload.single('image'), async (req, res) => {
+  let responseToSend = { success: false, error: 'An error occurred' };
+
   if (!req.file) {
-      return res.status(400).send('No file uploaded.');
+    responseToSend.error = 'No file uploaded.';
+    return res.status(400).json(responseToSend);
   }
 
   try {
@@ -58,41 +73,42 @@ app.post('/analyze-image', upload.single('image'), async (req, res) => {
 
       const prompt = `
       Analyze the provided image and accurately identify each food item. 
-      Output the nutritional information directly in a structured JSON format, adhering closely to standard nutritional databases. 
-      Convert all fractions to decimals for consistency and ensure that the macronutrient breakdown aligns with verified data sources. 
-      Focus on realistic serving sizes and avoid exaggerating quantities or nutritional values.
-      The image is expected to contain food items commonly found in nutritional databases. 
-      Accurately identify the dish and each ingredient based on visual analysis. 
-      Provide all quantities in decimal numerical format without any unit descriptions (e.g., '1', '0.5', not '1/2 cup', '2 slices') 
-      and convert any fractions to decimal format to ensure consistency and precision in measurements.
-      Provide a detailed breakdown of macronutrients. Structure the response as follows:      
+      Use visual recognition to estimate portion sizes, comparing them to known objects in the image or by referencing common serving sizes. 
+      Output the nutritional information in a structured JSON format, based closely on standard nutritional databases. 
+      Ensure all numerical values for weights and measures are provided in decimals without unit descriptions (e.g., '100', '50.5', not '100g', '1/2 cup'). 
+      When encountering ambiguous items, ask for user input or provide a range of estimated values. 
+      Consider the typical preparation methods and ingredients that are characteristic of the cuisine type depicted. 
+      Include potential cooking additives such as oils and condiments in your estimation. 
+      Acknowledge that the macronutrient content can vary with different cooking methods and recipe variations. 
+      Regularly update estimations based on a feedback loop with user corrections to refine accuracy over time. 
+      The following JSON structure should be used for displaying the nutritional information:
       
       {
-        "dish": "Name of the dish, clearly identified from the image",
+        "dish": "Identified name of the dish from the image",
         "ingredients": [
           {
-            "name": "Ingredient name, as commonly known",
-            "quantity": "Exact numerical quantity present in the dish, expressed in decimal format, without any unit description",
-            "calories": "Total calories for the quantity present, numeric value only",
+            "name": "Commonly known ingredient name",
+            "weight": "Exact weight of the ingredient in the dish in grams, expressed as a decimal",
+            "calories": "Total calories for the specified weight, numeric value only",
             "macronutrients": {
-              "fat": "Total fat in grams for the quantity present, numeric value only",
-              "carbohydrates": "Total carbohydrates in grams for the quantity present, numeric value only",
-              "protein": "Total protein in grams for the quantity present, numeric value only"
+              "fat": "Total fat in grams for the specified weight, numeric value only",
+              "carbohydrates": "Total carbohydrates in grams for the specified weight, numeric value only",
+              "protein": "Total protein in grams for the specified weight, numeric value only"
             }
           }
+          // ... other ingredients
         ],
         "totalNutrition": {
-          "calories": "Total calories of the complete dish, numeric value only",
-          "fat": "Sum of all fats in the dish in grams, numeric value only",
-          "carbohydrates": "Sum of all carbohydrates in the dish in grams, numeric value only",
-          "protein": "Sum of all proteins in the dish in grams, numeric value only"
+          "calories": "Sum of calories from all ingredients in the dish, numeric value only",
+          "fat": "Sum of fat in grams from all ingredients, numeric value only",
+          "carbohydrates": "Sum of carbohydrates in grams from all ingredients, numeric value only",
+          "protein": "Sum of protein in grams from all ingredients, numeric value only"
         }
       }
-  
-      Emphasize accuracy in the identification and quantification of ingredients. 
-      Ensure that the macronutrient breakdown adheres to typical values known for these ingredients in standard nutritional databases.
-  `;
-  
+      
+      Focus on the accuracy of macronutrient identification and quantification. Adhere to the nutritional values for these ingredients as known from reliable sources and databases. Avoid assumptions and overestimations; if in doubt, prioritize user interaction for clarification.
+      `;
+      
       const result = await genAI.getGenerativeModel({ model: "gemini-pro-vision" }).generateContent([prompt, imageData]);
       const response = await result.response;
       let rawText = await response.text();  // Await the Promise returned by text()
@@ -111,27 +127,66 @@ app.post('/analyze-image', upload.single('image'), async (req, res) => {
 
       const jsonData = JSON.parse(cleanText);
       const structuredData = parseNutritionalData(jsonData);
-      
-      return res.json({
-          success: true,
-          data: structuredData
-        });
-      } catch (error) {
-        console.error("Error:", error);
-        
-        // Check if cleanText is available before logging it
-        if (typeof cleanText !== 'undefined') {
-          console.log("Problematic JSON text:", cleanText);
-        }
-        
-        return res.status(500).json({
-          success: false,
-          error: 'Server error processing image'
-        });
+
+      // // Initialize an object to store the enhanced data
+      // let enhancedData = {
+      //   ...structuredData,
+      //   enhancedIngredients: []
+      // };
+
+      // // Loop through each ingredient from the Gemini data
+      // for (const ingredient of structuredData.ingredients) {
+      // try {
+      //   // Cross-reference with Edamam's Food Database API
+      //   const foodInfo = await getFoodDatabaseInfo(ingredient.name);
+      //   // Retrieve nutritional data using Edamam's Nutrition Analysis API
+      //   const nutritionalData = await getNutritionalAnalysis(foodInfo.foodId);
+
+      //   // Add the enhanced data to the enhancedData object
+      //   enhancedData.enhancedIngredients.push({
+      //     ...ingredient,
+      //     foodInfo: foodInfo, // Details from the Food Database API
+      //     nutritionalData: nutritionalData // Nutritional details from the Nutrition Analysis API
+      //   });
+      // } catch (error) {
+      //   console.error(`Error processing ingredient ${ingredient.name}:`, error);
+      //   // Handle the error appropriately
+      // }
+      // }
+
+      // Save to Firebase
+      const newDataKey = database.ref('dishes').push().key;
+      database.ref('dishes/' + newDataKey).set(structuredData, function(error) {
+          if (error) {
+              console.error("Firebase data could not be saved." + error);
+              return res.status(500).json({ success: false, error: 'Firebase data could not be saved.' });
+          } else {
+              console.log("Firebase data saved successfully.");
+              res.json({
+                  success: true,
+                  firebaseKey: newDataKey,
+                  data: structuredData
+              });
+          }
+      });;
+  } catch (error) {
+    console.error("Error:", error);
+
+    // If cleanText is defined, log it to help diagnose issues
+    if (typeof cleanText !== 'undefined') {
+      console.log("Problematic JSON text:", cleanText);
+    }
+
+    responseToSend.error = 'Server error processing image';
+    return res.status(500).json(responseToSend);
+
   } finally {
     // Safely attempt to delete the file
     if (req.file && fs.existsSync(req.file.path)) {
       fs.unlinkSync(req.file.path);
     }
-}
+  }
 });
+
+
+module.exports = app; // If needed for testing

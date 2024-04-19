@@ -8,6 +8,7 @@ const RECIPE_SEARCH_API_ENDPOINT = 'https://api.edamam.com/api/recipes/v2';
 
 // Function to call the Nutrition Analysis API
 async function getNutritionalAnalysis(ingredients) {
+  const url = createEdamamURL(ingredients); // Assuming ingredients is an array
   try {
     const response = await axios.get(NUTRITION_API_ENDPOINT, {
       params: {
@@ -16,7 +17,14 @@ async function getNutritionalAnalysis(ingredients) {
         ingr: ingredients
       }
     });
-    return response.data;
+    // Extracting only the necessary data
+    const { calories, totalNutrients } = response.data;
+    return {
+      calories,
+      fat: totalNutrients.FAT?.quantity || 0,
+      carbohydrates: totalNutrients.CHOCDF?.quantity || 0,
+      protein: totalNutrients.PROCNT?.quantity || 0
+    };
   } catch (error) {
     console.error('Error in Nutrition Analysis API:', error.message);
     throw error;
@@ -58,8 +66,24 @@ async function searchRecipes(query) {
   }
 }
 
+function createEdamamURL(ingredients) {
+  const baseUrl = "https://api.edamam.com/api/nutrition-data";
+  const appId = "your_app_id";
+  const appKey = "your_app_key";
+  let url = `${baseUrl}?app_id=${appId}&app_key=${appKey}`;
+  
+  ingredients.forEach(ingredient => {
+      const encodedIngredient = encodeURIComponent(ingredient);
+      url += `&ingr=${encodedIngredient}`;
+  });
+
+  return url;
+}
+
+
 module.exports = {
   getNutritionalAnalysis,
   getFoodDatabaseInfo,
-  searchRecipes
+  searchRecipes,
+  createEdamamURL
 };
