@@ -24,4 +24,18 @@ function parseNutritionalData(jsonData) {
     return structuredData;
 }
 
-module.exports = parseNutritionalData;
+function extractKeyNutrients(edamamData) {
+    // Extract only the required nutrients from the Edamam response
+    const requiredNutrients = {
+      calories: edamamData.totalNutrientsKCal.ENERC_KCAL.quantity || 0 ,
+      fat: edamamData.totalNutrients.FAT.quantity || 0,
+      carbohydrates: edamamData.totalNutrients.CHOCDF.quantity || 0,
+      protein: edamamData.totalNutrients.PROCNT.quantity || 0
+    };
+  
+    // Return the extracted nutrients
+    return requiredNutrients;
+  }
+
+  
+module.exports = {parseNutritionalData, extractKeyNutrients};
