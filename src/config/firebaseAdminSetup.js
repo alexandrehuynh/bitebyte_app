@@ -3,7 +3,7 @@ const serviceAccount = require("../../serviceAccountKey.json");  // Update this 
 
 admin.initializeApp({
   credential: admin.credential.cert(serviceAccount),
-  databaseURL: "https://your-project-id.firebaseio.com"  // Replace 'your-project-id' with the actual project ID
+  databaseURL: "https://bitebyte-app-default-rtdb.firebaseio.com/" 
 });
 
 module.exports = admin;
